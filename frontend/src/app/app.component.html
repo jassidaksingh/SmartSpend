@@ -1,0 +1,167 @@
+<div class="layout">
+  <header class="topbar">
+    <div class="brand">{{ title }}</div>
+    <div class="header-actions">
+      <button class="add-btn" (click)="connectBank()" title="Connect Bank Account">
+        <span class="plus-icon">+</span>
+        <span class="add-text">Add Account</span>
+      </button>
+      <span *ngIf="isLinked" class="status-badge">🟢 Connected</span>
+    </div>
+  </header>
+
+  <main class="content">
+    <!-- Quick Stats Overview -->
+    <div class="stats-grid">
+      <div class="stat-card balance">
+        <div class="stat-icon">💰</div>
+        <div class="stat-content">
+          <div class="stat-label">Total Balance</div>
+          <div class="stat-value">{{ getTotalBalance() | currency }}</div>
+          <div class="stat-change positive">+70.4% from last month</div>
+        </div>
+      </div>
+      
+      <div class="stat-card income">
+        <div class="stat-icon">📈</div>
+        <div class="stat-content">
+          <div class="stat-label">Total Income</div>
+          <div class="stat-value">$5,000</div>
+          <div class="stat-change positive">+2.5% from last month</div>
+        </div>
+      </div>
+      
+      <div class="stat-card expenses">
+        <div class="stat-icon">📉</div>
+        <div class="stat-content">
+          <div class="stat-label">Total Expenses</div>
+          <div class="stat-value">{{ (insights?.totalThisMonth || 0) | currency }}</div>
+          <div class="stat-change negative">-1.2% from last month</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dashboard-grid">
+      <section class="card chart-card">
+        <h2>Spending Breakdown</h2>
+        <div class="chart"><canvas id="pieChart"></canvas></div>
+      </section>
+
+      <section class="card insights-card">
+        <h2>Top Categories</h2>
+        <div *ngIf="insights?.topCategories?.length; else noInsights" class="categories-list">
+          <div *ngFor="let c of insights?.topCategories; let i = index" class="category-item">
+            <div class="category-dot" [style.background-color]="getCategoryColor(i)"></div>
+            <div class="category-info">
+              <span class="category-name">{{ formatCategoryName(c.name) }}</span>
+              <span class="category-amount">{{ c.total | currency }}</span>
+      </div>
+    </div>
+  </div>
+        <ng-template #noInsights>
+          <div class="empty-state">
+            <span class="empty-icon">📊</span>
+            <p>Connect an account to see spending insights</p>
+          </div>
+        </ng-template>
+      </section>
+    </div>
+
+    <!-- Accounts Section -->
+    <section class="card accounts-section">
+      <div class="section-header">
+        <h2>Connected Accounts</h2>
+        <span class="account-count" *ngIf="accounts?.length">{{ accounts.length }} account{{ accounts.length === 1 ? '' : 's' }}</span>
+      </div>
+      <div *ngIf="accounts?.length; else noAccounts" class="accounts-grid">
+        <div *ngFor="let a of accounts" class="account-card">
+          <div class="account-info">
+            <div class="account-icon">🏦</div>
+            <div class="account-details">
+              <h3 class="account-name">{{ a.name }}</h3>
+              <p class="account-type">{{ getAccountType(a.type) }}</p>
+            </div>
+          </div>
+          <div class="account-balance">
+            <span class="balance-amount">{{ a.balances?.current | currency }}</span>
+            <span class="balance-label">Available</span>
+          </div>
+        </div>
+      </div>
+      <ng-template #noAccounts>
+        <div class="empty-state">
+          <span class="empty-icon">🏦</span>
+          <p>No accounts connected yet</p>
+          <button class="add-btn-small" (click)="connectBank()">+ Connect Account</button>
+        </div>
+      </ng-template>
+    </section>
+
+    <!-- Transactions Section -->
+    <section class="card transactions-section">
+      <div class="section-header">
+        <div class="header-left">
+          <h2>Recent Transactions</h2>
+          <span class="transaction-count" *ngIf="transactions?.length">{{ transactions.length }} transaction{{ transactions.length === 1 ? '' : 's' }}</span>
+        </div>
+        <button class="refresh-btn" (click)="refreshData()" title="Refresh Data">
+          <span class="refresh-icon">🔄</span>
+        </button>
+      </div>
+      <div *ngIf="transactions?.length; else noTransactions" class="transactions-list">
+        <div *ngFor="let t of transactions.slice(0, 10)" class="transaction-item">
+          <div class="transaction-icon">{{ getTransactionIcon(t.category) }}</div>
+          <div class="transaction-details">
+            <h4 class="transaction-name">{{ t.name }}</h4>
+            <p class="transaction-date">{{ formatDate(t.date) }}</p>
+          </div>
+          <div class="transaction-amount" [class.negative]="t.amount < 0" [class.positive]="t.amount >= 0">
+            {{ t.amount | currency }}
+          </div>
+          <div class="transaction-category">
+            <span class="category-tag">{{ formatCategoryName(t.category) }}</span>
+          </div>
+        </div>
+      </div>
+      <ng-template #noTransactions>
+        <div class="empty-state">
+          <span class="empty-icon">📋</span>
+          <p>No transactions yet</p>
+        </div>
+      </ng-template>
+    </section>
+
+    <!-- AI Assistant Section -->
+    <section class="card ai-section">
+      <div class="section-header">
+        <h2>SmartSpend AI Assistant</h2>
+        <span class="ai-status">Online</span>
+      </div>
+      <div class="chat-container">
+        <div *ngIf="answer" class="ai-response">
+          <div class="ai-avatar">🤖</div>
+          <div class="response-bubble">{{ answer }}</div>
+        </div>
+        <div class="chat-input-container">
+          <textarea 
+            [(ngModel)]="question" 
+            class="chat-input" 
+            placeholder="Ask me about your spending... 💬"
+            rows="2"
+            (keydown.enter)="onEnterKey($event)">
+          </textarea>
+          <button class="send-btn" (click)="ask()" [disabled]="!question.trim()">
+            <span class="send-icon">📤</span>
+          </button>
+        </div>
+        <div class="suggested-questions">
+          <button *ngFor="let suggestion of getSuggestedQuestions()" 
+                  class="suggestion-chip" 
+                  (click)="question = suggestion">
+            {{ suggestion }}
+          </button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
