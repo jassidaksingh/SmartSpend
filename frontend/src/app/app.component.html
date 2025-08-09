@@ -1,4 +1,151 @@
-<div class="layout">
+<!-- Onboarding Flow -->
+<div *ngIf="showOnboarding" class="onboarding-overlay">
+  <div class="onboarding-modal">
+    <!-- Step 1: Welcome -->
+    <div *ngIf="onboardingStep === 1" class="onboarding-step">
+      <div class="onboarding-icon">
+        <div class="icon-gradient">
+          <span class="sparkle">✨</span>
+        </div>
+      </div>
+      <h1 class="onboarding-title">Welcome to SmartSpend! 🎉</h1>
+      <p class="onboarding-description">
+        Your intelligent financial companion that helps you track, analyze, and optimize your spending.
+      </p>
+      <div class="onboarding-progress">
+        <div class="progress-dots">
+          <div class="dot active"></div>
+          <div class="dot"></div>
+          <div class="dot"></div>
+        </div>
+      </div>
+      <button class="onboarding-btn primary" (click)="nextOnboardingStep()">
+        Next
+      </button>
+    </div>
+
+    <!-- Step 2: Connect Accounts -->
+    <div *ngIf="onboardingStep === 2" class="onboarding-step">
+      <div class="onboarding-icon">
+        <div class="icon-gradient">
+          <span class="bank-icon">🏦</span>
+        </div>
+      </div>
+      <h1 class="onboarding-title">Connect Your Accounts</h1>
+      <p class="onboarding-description">
+        Securely link your bank accounts and credit cards to automatically track your transactions.
+      </p>
+      <div class="onboarding-progress">
+        <div class="progress-dots">
+          <div class="dot completed"></div>
+          <div class="dot active"></div>
+          <div class="dot"></div>
+        </div>
+      </div>
+      <div class="onboarding-actions">
+        <button class="onboarding-btn secondary" (click)="previousOnboardingStep()">
+          Back
+        </button>
+        <button class="onboarding-btn primary" (click)="nextOnboardingStep()">
+          Next
+        </button>
+      </div>
+    </div>
+
+    <!-- Step 3: Get Started -->
+    <div *ngIf="onboardingStep === 3" class="onboarding-step">
+      <div class="onboarding-icon">
+        <div class="icon-gradient">
+          <span class="chart-icon">📊</span>
+        </div>
+      </div>
+      <h1 class="onboarding-title">Get Started</h1>
+      <p class="onboarding-description">
+        Start tracking your spending and get AI-powered insights to improve your financial health.
+      </p>
+      <div class="onboarding-progress">
+        <div class="progress-dots">
+          <div class="dot completed"></div>
+          <div class="dot completed"></div>
+          <div class="dot active"></div>
+        </div>
+      </div>
+      <div class="onboarding-actions">
+        <button class="onboarding-btn secondary" (click)="previousOnboardingStep()">
+          Back
+        </button>
+        <button class="onboarding-btn primary" (click)="completeOnboarding()">
+          Get Started
+        </button>
+      </div>
+    </div>
+
+    <!-- Skip option -->
+    <button class="skip-onboarding" (click)="skipOnboarding()">
+      Skip for now
+    </button>
+  </div>
+</div>
+
+<!-- Connection Popup -->
+<div *ngIf="showConnectionPopup" class="connection-popup-overlay">
+  <div class="connection-popup">
+    <div class="popup-header">
+      <div class="popup-icon">
+        <div class="icon-gradient">
+          <span class="bank-icon">🏦</span>
+        </div>
+      </div>
+      <h2 class="popup-title">Connect Your Bank Account</h2>
+      <p class="popup-description">
+        Securely link your bank accounts to start tracking your spending and get personalized insights.
+      </p>
+    </div>
+    
+    <div class="popup-content">
+      <div class="connection-benefits">
+        <div class="benefit-item">
+          <span class="benefit-icon">🔒</span>
+          <div class="benefit-text">
+            <h4>Secure & Private</h4>
+            <p>Bank-level security with read-only access</p>
+          </div>
+        </div>
+        <div class="benefit-item">
+          <span class="benefit-icon">📊</span>
+          <div class="benefit-text">
+            <h4>Smart Insights</h4>
+            <p>AI-powered spending analysis and recommendations</p>
+          </div>
+        </div>
+        <div class="benefit-item">
+          <span class="benefit-icon">⚡</span>
+          <div class="benefit-text">
+            <h4>Real-time Updates</h4>
+            <p>Automatic transaction syncing and categorization</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="popup-actions">
+      <button class="popup-btn secondary" (click)="closeConnectionPopup()">
+        Skip for now
+      </button>
+      <button class="popup-btn primary" (click)="connectAccountFromPopup()">
+        <span class="btn-icon">🔗</span>
+        Connect Account
+      </button>
+    </div>
+    
+    <button class="popup-close" (click)="closeConnectionPopup()">
+      ✕
+    </button>
+  </div>
+</div>
+
+<!-- Main Dashboard (only show after onboarding and connection popup) -->
+<div *ngIf="!showOnboarding && !showConnectionPopup" class="layout">
   <header class="topbar">
     <div class="brand">{{ title }}</div>
     <div class="header-actions">
@@ -7,6 +154,10 @@
         <span class="add-text">Add Account</span>
       </button>
       <span *ngIf="isLinked" class="status-badge">🟢 Connected</span>
+      <!-- Development: Reset onboarding button -->
+      <button class="reset-btn" (click)="resetOnboarding()" title="Reset Onboarding">
+        🔄 Reset
+      </button>
     </div>
   </header>
 
@@ -55,9 +206,9 @@
             <div class="category-info">
               <span class="category-name">{{ formatCategoryName(c.name) }}</span>
               <span class="category-amount">{{ c.total | currency }}</span>
-      </div>
-    </div>
-  </div>
+            </div>
+          </div>
+        </div>
         <ng-template #noInsights>
           <div class="empty-state">
             <span class="empty-icon">📊</span>
@@ -108,50 +259,102 @@
           <span class="refresh-icon">🔄</span>
         </button>
       </div>
-      <div *ngIf="transactions?.length; else noTransactions" class="transactions-list">
-        <div *ngFor="let t of transactions.slice(0, 10)" class="transaction-item">
-          <div class="transaction-icon">{{ getTransactionIcon(t.category) }}</div>
-          <div class="transaction-details">
-            <h4 class="transaction-name">{{ t.name }}</h4>
-            <p class="transaction-date">{{ formatDate(t.date) }}</p>
-          </div>
-          <div class="transaction-amount" [class.negative]="t.amount < 0" [class.positive]="t.amount >= 0">
-            {{ t.amount | currency }}
-          </div>
-          <div class="transaction-category">
-            <span class="category-tag">{{ formatCategoryName(t.category) }}</span>
+      <div *ngIf="isLoadingTransactions" class="loading-state">
+        <div class="loading-spinner"></div>
+        <p>Loading transactions...</p>
+      </div>
+      <div *ngIf="!isLoadingTransactions && transactions.length > 0" class="transactions-container">
+        <div class="transactions">
+          <div *ngFor="let t of transactions.slice(0, 10)" class="transaction">
+            <div class="transaction-info">
+              <span class="transaction-icon">{{ getTransactionIcon(t.category) }}</span>
+              <div class="transaction-details">
+                <span class="transaction-name">{{ t.name }}</span>
+                <span class="transaction-category">{{ formatCategoryName(t.category) }}</span>
+              </div>
+            </div>
+            <div class="transaction-amount">
+              <span class="amount">{{ t.amount | currency }}</span>
+              <span class="date">{{ formatDate(t.date) }}</span>
+            </div>
           </div>
         </div>
       </div>
-      <ng-template #noTransactions>
-        <div class="empty-state">
-          <span class="empty-icon">📋</span>
-          <p>No transactions yet</p>
-        </div>
-      </ng-template>
+      <div *ngIf="!isLoadingTransactions && transactions.length === 0" class="empty-state">
+        <p>No transactions yet. Connect your bank account or upload a CSV file to get started.</p>
+      </div>
     </section>
 
     <!-- AI Assistant Section -->
     <section class="card ai-section">
       <div class="section-header">
-        <h2>SmartSpend AI Assistant</h2>
-        <span class="ai-status">Online</span>
+        <div class="header-left">
+          <div class="ai-title">
+            <h2>SmartSpend AI Assistant</h2>
+            <span class="ai-status">Online</span>
+          </div>
+        </div>
+        <div class="header-right">
+          <span class="groq-badge">
+            <span class="groq-icon">⚡</span>
+            Groq
+          </span>
+          <button class="expand-btn" title="Expand Chat">
+            <span class="expand-icon">⤢</span>
+          </button>
+        </div>
       </div>
       <div class="chat-container">
-        <div *ngIf="answer" class="ai-response">
-          <div class="ai-avatar">🤖</div>
-          <div class="response-bubble">{{ answer }}</div>
+        <div class="chat-messages" #chatMessages>
+          <!-- Welcome message when no chat history -->
+          <div *ngIf="chatHistory.length === 0" class="welcome-message">
+            <div class="welcome-robot">🤖</div>
+            <p>Hi! I'm your SmartSpend AI assistant powered by Groq.</p>
+            <p>Ask me anything about personal finance!</p>
+          </div>
+          
+          <!-- Chat messages -->
+          <div *ngFor="let message of chatHistory" 
+               class="chat-message" 
+               [class.user-message]="message.type === 'user'"
+               [class.ai-message]="message.type === 'ai'">
+            <div class="message-avatar">
+              <span *ngIf="message.type === 'user'" class="user-avatar">👤</span>
+              <span *ngIf="message.type === 'ai'" class="ai-avatar">🤖</span>
+            </div>
+            <div class="message-content">
+              <div class="message-bubble">{{ message.message }}</div>
+              <div class="message-timestamp">{{ message.timestamp | date:'shortTime' }}</div>
+            </div>
+          </div>
+          
+          <!-- Show loading indicator when asking -->
+          <div *ngIf="isLoadingTransactions" class="chat-message ai-message">
+            <div class="message-avatar">
+              <span class="ai-avatar">🤖</span>
+            </div>
+            <div class="message-content">
+              <div class="message-bubble loading">
+                <div class="typing-indicator">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
+        
         <div class="chat-input-container">
           <textarea 
             [(ngModel)]="question" 
             class="chat-input" 
-            placeholder="Ask me about your spending... 💬"
-            rows="2"
+            placeholder="Ask me about your spending..."
+            rows="1"
             (keydown.enter)="onEnterKey($event)">
           </textarea>
           <button class="send-btn" (click)="ask()" [disabled]="!question.trim()">
-            <span class="send-icon">📤</span>
+            <span class="send-icon">→</span>
           </button>
         </div>
         <div class="suggested-questions">

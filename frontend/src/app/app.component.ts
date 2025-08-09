@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import Chart from 'chart.js/auto';
@@ -10,7 +10,7 @@ import Chart from 'chart.js/auto';
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss'
 })
-export class AppComponent {
+export class AppComponent implements OnInit {
   title = 'SmartSpend';
 
   // Backend base URL
@@ -23,11 +23,102 @@ export class AppComponent {
   transactions: any[] = [];
   insights: { totalThisMonth: number; topCategories: { name: string; total: number }[] } | null = null;
 
+  // Onboarding state
+  showOnboarding = true;
+  onboardingStep = 1;
+  totalOnboardingSteps = 3;
+
+  // Connection popup state
+  showConnectionPopup = false;
+
+  // Loading states
+  isLoadingTransactions = false;
+
+  // Chat history
+  chatHistory: Array<{type: 'user' | 'ai', message: string, timestamp: Date}> = [];
+
   private pieChart: Chart | null = null;
 
   // Chat
   question = '';
   answer = '';
+
+  ngOnInit() {
+    // Check if user has already completed onboarding
+    const hasCompletedOnboarding = localStorage.getItem('smartspend_onboarding_completed');
+    if (hasCompletedOnboarding === 'true') {
+      this.showOnboarding = false;
+      this.checkConnectionStatus();
+    }
+  }
+
+  async checkConnectionStatus() {
+    try {
+      const res = await fetch(`${this.apiBase}/plaid/accounts`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.accounts && data.accounts.length > 0) {
+          this.isLinked = true;
+          this.accounts = data.accounts;
+          await this.refreshData();
+        }
+      }
+    } catch (error) {
+      console.log('No existing connection found');
+    }
+  }
+
+  nextOnboardingStep() {
+    if (this.onboardingStep < this.totalOnboardingSteps) {
+      this.onboardingStep++;
+    } else {
+      this.completeOnboarding();
+    }
+  }
+
+  previousOnboardingStep() {
+    if (this.onboardingStep > 1) {
+      this.onboardingStep--;
+    }
+  }
+
+  async completeOnboarding() {
+    this.showOnboarding = false;
+    this.showConnectionPopup = true;
+    localStorage.setItem('smartspend_onboarding_completed', 'true');
+  }
+
+  async closeConnectionPopup() {
+    this.showConnectionPopup = false;
+    // Check if user connected an account
+    if (this.isLinked) {
+      await this.refreshData();
+    } else {
+      // User skipped connection - they can still use the app with CSV upload
+      console.log('User skipped account connection');
+    }
+  }
+
+  async connectAccountFromPopup() {
+    try {
+      await this.connectBank();
+      // The popup will be closed in the onSuccess callback of openPlaidLink
+    } catch (error) {
+      console.error('Error connecting account from popup:', error);
+    }
+  }
+
+  skipOnboarding() {
+    this.showOnboarding = false;
+    localStorage.setItem('smartspend_onboarding_completed', 'true');
+  }
+
+  // Method to reset onboarding (for testing)
+  resetOnboarding() {
+    this.showOnboarding = true;
+    this.onboardingStep = 1;
+    localStorage.removeItem('smartspend_onboarding_completed');
+  }
 
   async createLinkToken() {
     const res = await fetch(`${this.apiBase}/plaid/create_link_token`, { method: 'POST' });
@@ -41,33 +132,83 @@ export class AppComponent {
     const handler = window.Plaid.create({
       token: this.linkToken,
       onSuccess: async (public_token: string) => {
-        await fetch(`${this.apiBase}/plaid/exchange_public_token`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ public_token })
-        });
-        this.isLinked = true;
-        await this.refreshData();
+        try {
+          await fetch(`${this.apiBase}/plaid/exchange_public_token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ public_token })
+          });
+          this.isLinked = true;
+          this.showConnectionPopup = false; // Close the popup
+          
+          // Wait a moment for Plaid to process the connection, then load data
+          setTimeout(async () => {
+            await this.refreshData();
+            // If transactions are still empty, try again after a longer delay
+            if (this.transactions.length === 0) {
+              setTimeout(async () => {
+                await this.refreshData();
+              }, 2000);
+            }
+          }, 1000);
+          
+        } catch (error) {
+          console.error('Error exchanging token:', error);
+        }
       },
+      onExit: () => {
+        // Handle when user exits Plaid Link
+        console.log('User exited Plaid Link');
+      },
+      onError: (error: any) => {
+        console.error('Plaid Link error:', error);
+      }
     });
     handler.open();
   }
 
   async refreshData() {
-    const [acctRes, txRes] = await Promise.all([
-      fetch(`${this.apiBase}/plaid/accounts`),
-      fetch(`${this.apiBase}/plaid/transactions`)
-    ]);
-    const acctData = await acctRes.json();
-    const txData = await txRes.json();
-    this.accounts = acctData.accounts || [];
-    this.transactions = (txData.transactions || []).map((t: any) => ({
-      date: t.date,
-      name: t.name || t.merchant_name,
-      amount: t.amount,
-      category: t.personal_finance_category?.primary || (Array.isArray(t.category) ? t.category[0] : t.category)
-    }));
-    await this.computeInsights();
+    try {
+      console.log('Refreshing data...');
+      this.isLoadingTransactions = true;
+      
+      const [acctRes, txRes] = await Promise.all([
+        fetch(`${this.apiBase}/plaid/accounts`),
+        fetch(`${this.apiBase}/plaid/transactions`)
+      ]);
+      
+      if (!acctRes.ok) {
+        console.error('Failed to fetch accounts:', acctRes.status, acctRes.statusText);
+      }
+      if (!txRes.ok) {
+        console.error('Failed to fetch transactions:', txRes.status, txRes.statusText);
+      }
+      
+      const acctData = await acctRes.json();
+      const txData = await txRes.json();
+      
+      console.log('Accounts response:', acctData);
+      console.log('Transactions response:', txData);
+      
+      this.accounts = acctData.accounts || [];
+      this.transactions = (txData.transactions || []).map((t: any) => ({
+        date: t.date,
+        name: t.name || t.merchant_name || 'Unknown',
+        amount: t.amount,
+        category: t.personal_finance_category?.primary || 
+                 (Array.isArray(t.category) ? t.category[0] : t.category) || 
+                 'Other'
+      }));
+      
+      console.log('Processed transactions:', this.transactions);
+      console.log('Transaction count:', this.transactions.length);
+      
+      await this.computeInsights();
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    } finally {
+      this.isLoadingTransactions = false;
+    }
   }
 
   async computeInsights() {
@@ -98,6 +239,18 @@ export class AppComponent {
   }
 
   async ask() {
+    if (!this.question.trim()) return;
+    
+    // Add user question to chat history
+    this.chatHistory.push({
+      type: 'user',
+      message: this.question,
+      timestamp: new Date()
+    });
+    
+    // Scroll to bottom after adding user message
+    this.scrollToBottom();
+    
     // Create a comprehensive financial summary for the AI
     const totalBalance = this.getTotalBalance();
     const transactionCount = this.transactions.length;
@@ -115,22 +268,53 @@ ${this.insights?.topCategories?.map(c => `- ${this.formatCategoryName(c.name)}: 
 Recent Transactions:
 ${recentTransactions.join('\n') || 'No recent transactions'}`;
 
-    const res = await fetch(`${this.apiBase}/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: this.question, summary })
-    });
-    const data = await res.json();
-    this.answer = data.answer || 'No response';
-    this.question = ''; // Clear the question after asking
+    try {
+      const res = await fetch(`${this.apiBase}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: this.question, summary })
+      });
+      const data = await res.json();
+      this.answer = data.answer || 'No response';
+      
+      // Add AI response to chat history
+      this.chatHistory.push({
+        type: 'ai',
+        message: this.answer,
+        timestamp: new Date()
+      });
+      
+      this.question = ''; // Clear the question after asking
+      
+      // Scroll to bottom after adding AI response
+      this.scrollToBottom();
+    } catch (error) {
+      console.error('Error asking AI:', error);
+      this.answer = 'Sorry, I encountered an error. Please try again.';
+      
+      // Add error response to chat history
+      this.chatHistory.push({
+        type: 'ai',
+        message: this.answer,
+        timestamp: new Date()
+      });
+      
+      // Scroll to bottom after adding error response
+      this.scrollToBottom();
+    }
   }
 
   // Simplified bank connection flow
   async connectBank() {
-    if (!this.linkToken) {
-      await this.createLinkToken();
+    try {
+      if (!this.linkToken) {
+        await this.createLinkToken();
+      }
+      this.openPlaidLink();
+    } catch (error) {
+      console.error('Error connecting bank:', error);
+      // Handle error - could show a toast notification
     }
-    this.openPlaidLink();
   }
 
   // Get total balance from accounts
@@ -277,5 +461,15 @@ ${recentTransactions.join('\n') || 'No recent transactions'}`;
     } else {
       console.error('Could not find pieChart canvas element');
     }
+  }
+
+  // Auto-scroll to bottom of chat
+  scrollToBottom() {
+    setTimeout(() => {
+      const chatMessages = document.querySelector('.chat-messages');
+      if (chatMessages) {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+    }, 100);
   }
 }

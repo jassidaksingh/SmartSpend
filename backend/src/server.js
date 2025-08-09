@@ -10,6 +10,46 @@ const OpenAI = require('openai');
 
 dotenv.config();
 
+// Centralized AI configuration
+const AI_CONFIG = {
+  SYSTEM_PROMPT: `You are SmartSpend AI, a helpful financial assistant integrated into the SmartSpend financial tracking app. 
+
+Your role is to help users with:
+- Personal finance advice and budgeting tips
+- Expense tracking and categorization guidance
+- Savings strategies and financial planning
+- Investment basics and recommendations
+- Debt management advice
+- Financial goal setting
+
+Keep responses concise, practical, and actionable. Always be encouraging and supportive about financial wellness. If users ask about specific transactions or account data, remind them that you can provide better insights once they connect their accounts or add more transaction data.
+
+Current user context: The user is using SmartSpend, which shows they have $5,000 in income but minimal expense tracking so far. Encourage them to start tracking expenses and connecting accounts for better insights.
+
+Respond in a friendly, conversational tone and keep answers under 150 words unless the user specifically asks for detailed information.`,
+
+  FALLBACK_SYSTEM_PROMPT: `You are SmartSpend AI, a helpful financial assistant. 
+
+Provide concise, practical financial advice in a friendly tone. Focus on:
+- Budgeting and saving strategies
+- Expense tracking tips
+- Investment basics
+- Debt management
+
+Keep responses under 150 words and be encouraging about financial wellness.`,
+
+  MODELS: {
+    PRIMARY: "llama-3.1-8b-instant",
+    FALLBACK: ["llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"],
+  },
+
+  SETTINGS: {
+    MAX_TOKENS: 500,
+    TEMPERATURE: 0.7,
+    FALLBACK_MAX_TOKENS: 400,
+  },
+};
+
 const app = express();
 const port = process.env.PORT || 3000;
 const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:4200';
@@ -192,36 +232,8 @@ app.post('/api/chat', async (req, res) => {
   try {
     const { question, summary } = req.body || {};
     if (!question) return res.status(400).json({ error: 'question is required' });
-    const systemPrompt = `You are SmartSpend AI, an expert personal finance assistant and spending advisor. You help users understand their financial habits and make better money decisions.
-
-PERSONALITY & TONE:
-- Be friendly, encouraging, and non-judgmental
-- Use clear, conversational language (avoid financial jargon)
-- Provide actionable insights and practical advice
-- Be empathetic about financial challenges
-- Celebrate good financial habits
-
-RESPONSE GUIDELINES:
-- Keep responses concise but informative (2-3 sentences max)
-- Always use specific dollar amounts from the data when available
-- Provide context and comparisons when helpful
-- Suggest concrete next steps or improvements
-- Use emojis sparingly for visual appeal (💰 📊 ✨)
-
-ANALYSIS CAPABILITIES:
-- Spending patterns and trends
-- Budget recommendations
-- Category-specific insights
-- Month-over-month comparisons
-- Savings opportunities
-- Financial goal planning
-
-SAMPLE RESPONSES:
-- "You spent $1,200 on dining out this month, which is 25% of your total expenses. Consider meal prepping to save $300-400 monthly! 🍳"
-- "Great news! Your entertainment spending dropped 15% from last month. You're on track to save an extra $600 this year! ✨"
-- "Your grocery spending of $450 seems reasonable for your budget. Try the 50/30/20 rule: 50% needs, 30% wants, 20% savings."
-
-Use the transaction data provided to give personalized, data-driven financial advice.`;
+    
+    const systemPrompt = AI_CONFIG.SYSTEM_PROMPT;
     const userContent = `USER QUESTION: ${question}
 
 FINANCIAL DATA SUMMARY:
@@ -233,12 +245,13 @@ Please provide a helpful, personalized response based on this financial data.`;
     if (process.env.GROQ_API_KEY) {
       const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
       const completion = await groq.chat.completions.create({
-        model: 'llama-3.1-8b-instant',
+        model: AI_CONFIG.MODELS.PRIMARY,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userContent },
         ],
-        temperature: 0.2,
+        temperature: AI_CONFIG.SETTINGS.TEMPERATURE,
+        max_tokens: AI_CONFIG.SETTINGS.MAX_TOKENS,
       });
       answer = completion.choices?.[0]?.message?.content || answer;
     } else if (process.env.OPENAI_API_KEY) {
@@ -249,7 +262,8 @@ Please provide a helpful, personalized response based on this financial data.`;
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userContent },
         ],
-        temperature: 0.2,
+        temperature: AI_CONFIG.SETTINGS.TEMPERATURE,
+        max_tokens: AI_CONFIG.SETTINGS.MAX_TOKENS,
       });
       answer = completion.choices?.[0]?.message?.content || answer;
     }
